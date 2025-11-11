@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
 from flask_cors import CORS
@@ -203,6 +203,10 @@ message_schema = MessageSchema()
 messages_schema = MessageSchema(many=True)
 
 # Routes
+@app.route('/')
+def index():
+    return render_template('index.html')
+
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     try:
@@ -305,6 +309,21 @@ def update_profile():
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': 'Failed to update profile', 'error': str(e)}), 500
+
+@app.route('/api/user/skills', methods=['GET'])
+@jwt_required()
+def get_user_skills():
+    try:
+        user_id = int(get_jwt_identity())
+        skills = SkillListing.query.filter_by(provider_id=user_id, is_active=True).order_by(SkillListing.created_at.desc()).all()
+        
+        return jsonify({
+            'skills': skills_schema.dump(skills),
+            'total': len(skills)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'message': 'Failed to get user skills', 'error': str(e)}), 500
 
 @app.route('/api/skills', methods=['GET'])
 def get_skills():

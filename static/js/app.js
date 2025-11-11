@@ -513,7 +513,7 @@ async function postSkill() {
         if (response.ok) {
             showToast('Skill posted successfully!', 'success');
             document.getElementById('postSkillForm').reset();
-            showSkills();
+            showMySkills();
         } else {
             const detailParts = [];
             if (data && data.message) detailParts.push(data.message);
@@ -533,8 +533,14 @@ async function postSkill() {
 }
 
 async function loadMySkills() {
+    if (!currentUser || !authToken) {
+        showToast('Please login to view your skills', 'warning');
+        showLogin();
+        return;
+    }
+    
     try {
-        const response = await fetch(`${API_BASE}/skills`, {
+        const response = await fetch(`${API_BASE}/user/skills`, {
             headers: {
                 'Authorization': `Bearer ${authToken}`
             }
@@ -542,10 +548,9 @@ async function loadMySkills() {
         const data = await response.json();
         
         if (response.ok) {
-            const mySkills = data.skills.filter(skill => skill.provider_id === currentUser.id);
-            displayMySkills(mySkills);
+            displayMySkills(data.skills || []);
         } else {
-            showToast('Failed to load your skills', 'error');
+            showToast(data.message || 'Failed to load your skills', 'error');
         }
     } catch (error) {
         showToast('Network error. Please try again.', 'error');
@@ -558,7 +563,18 @@ function displayMySkills(skills) {
     mySkillsList.innerHTML = '';
     
     if (skills.length === 0) {
-        mySkillsList.innerHTML = '<div class="col-12"><div class="alert alert-info">You haven\'t posted any skills yet.</div></div>';
+        mySkillsList.innerHTML = `
+            <div class="col-12">
+                <div class="card text-center p-5" style="background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px);">
+                    <i class="fas fa-briefcase fa-4x mb-3" style="color: var(--primary); opacity: 0.5;"></i>
+                    <h4 class="mb-2">No Skills Posted Yet</h4>
+                    <p class="text-muted mb-4">Start sharing your expertise with the community!</p>
+                    <button class="btn btn-primary" onclick="showPostSkill()">
+                        <i class="fas fa-plus me-2"></i>Post Your First Skill
+                    </button>
+                </div>
+            </div>
+        `;
         return;
     }
     
@@ -569,46 +585,66 @@ function displayMySkills(skills) {
 }
 
 function createMySkillCard(skill) {
-    const createdAt = new Date(skill.created_at).toLocaleDateString();
-    const priceDisplay = skill.monetary_price > 0 ? `$${skill.monetary_price}` : 'Free';
+    const createdAt = new Date(skill.created_at).toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    });
+    const priceDisplay = skill.monetary_price > 0 ? `$${skill.monetary_price.toFixed(2)}` : 'Free';
     const creditsDisplay = skill.time_credits > 0 ? `${skill.time_credits} credits` : 'No credits';
+    const availabilityBadge = skill.availability === 'available' 
+        ? '<span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>Available</span>'
+        : '<span class="badge bg-secondary"><i class="fas fa-pause-circle me-1"></i>Unavailable</span>';
     
     return `
-        <div class="col-md-6 col-lg-4">
+        <div class="col-md-6 col-lg-4 mb-4">
             <div class="card skill-card h-100">
                 <div class="card-body">
-                    <h5 class="card-title">${skill.title}</h5>
-                    <span class="skill-category">${skill.category}</span>
-                    <p class="card-text mt-2">${skill.description}</p>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h5 class="card-title mb-0">${escapeHtml(skill.title)}</h5>
+                        ${availabilityBadge}
+                    </div>
+                    <span class="skill-category">${escapeHtml(skill.category)}</span>
+                    <p class="card-text mt-3 mb-3" style="min-height: 60px;">${escapeHtml(skill.description)}</p>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
                         <div>
                             <small class="text-muted">
-                                <i class="fas fa-map-marker-alt me-1"></i>${skill.location || 'Remote'}
+                                <i class="fas fa-map-marker-alt me-1"></i>${escapeHtml(skill.location || 'Remote')}
                             </small>
                         </div>
-                        <div>
-                            <small class="skill-price">${priceDisplay}</small>
-                            <small class="skill-time-credits ms-2">${creditsDisplay}</small>
+                        <div class="text-end">
+                            <div class="skill-price">${priceDisplay}</div>
+                            <div class="skill-time-credits">${creditsDisplay}</div>
                         </div>
                     </div>
-                    <div class="mt-3">
-                        <small class="text-muted">Posted on ${createdAt}</small>
-                        <span class="badge bg-${skill.availability === 'available' ? 'success' : 'secondary'} ms-2">
-                            ${skill.availability}
-                        </span>
+                    <div class="mt-3 pt-3 border-top">
+                        <small class="text-muted">
+                            <i class="far fa-calendar me-1"></i>Posted on ${createdAt}
+                        </small>
                     </div>
                 </div>
-                <div class="card-footer">
-                    <button class="btn btn-outline-primary btn-sm" onclick="editSkill(${skill.id})">
-                        <i class="fas fa-edit me-1"></i>Edit
-                    </button>
-                    <button class="btn btn-outline-danger btn-sm" onclick="deleteSkill(${skill.id})">
-                        <i class="fas fa-trash me-1"></i>Delete
-                    </button>
+                <div class="card-footer bg-transparent border-top">
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-primary btn-sm flex-fill" onclick="editSkill(${skill.id})">
+                            <i class="fas fa-edit me-1"></i>Edit
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="viewSkillDetails(${skill.id})" title="View Details">
+                            <i class="fas fa-info-circle"></i>
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="deleteSkill(${skill.id})" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     `;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Wallet functions
